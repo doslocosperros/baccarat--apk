@@ -6,9 +6,13 @@ Free, play-money Punto Banco baccarat for Android. Fully offline: the app declar
 - Wrapper: `app/src/main/java/com/funfacts/baccarat/MainActivity.java` (WebView)
 - Rules: 8-deck shoe, standard third-card rules. Player 1:1, Banker 0.95:1, Tie 8:1, Player/Banker push on tie.
 
+- **Learning mode:** toggle at the top. Explains the opening hand, each third-card decision, the payout maths and house edge per bet. The setting is remembered.
+
 ## Build
 Needs JDK 17+, Gradle 8.7+ and the Android SDK (platform 34, build-tools 34).
 
     gradle assembleDebug
 
 APK: `app/build/outputs/apk/debug/app-debug.apk` (debug-signed, for sideloading).
+
+A prebuilt debug APK is at `baccarat.apk` in the repo root.

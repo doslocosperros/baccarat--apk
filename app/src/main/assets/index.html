@@ -39,6 +39,14 @@ button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:14px;col
 #deal{flex:2;background:var(--gold);color:#222;font-size:17px}
 button:disabled{opacity:.4}
 footer{font-size:11px;opacity:.6;text-align:center;margin-top:8px}
+#learnbar{display:flex;align-items:center;justify-content:space-between;margin:6px 0 0;font-size:13px}
+.sw{position:relative;width:46px;height:26px;background:#0006;border-radius:13px;border:0;padding:0;flex:none}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--gold)}.sw.on::after{left:23px;background:#222}
+#learn{display:none;background:#0a2f23;border:1px solid var(--gold);border-radius:10px;padding:8px 10px;margin:6px 0 0;font-size:13px;line-height:1.4;max-height:25vh;overflow-y:auto}
+#learn.show{display:block}
+#learn p{margin:0 0 5px}#learn .hd{color:var(--gold);font-weight:700}
+#learn .tip{color:#9fe0b8}
 #modal{position:fixed;inset:0;background:#000c;display:none;place-items:center;padding:20px;z-index:9}
 #modal div{background:var(--felt2);border-radius:16px;padding:20px;max-width:380px;font-size:14px;line-height:1.5}
 #modal h2{margin:0 0 8px;color:var(--gold)}
@@ -51,6 +59,8 @@ footer{font-size:11px;opacity:.6;text-align:center;margin-top:8px}
     <span class="pill" id="stats"></span>
     <span class="pill">Balance <b id="bal" style="font-size:16px"></b></span>
   </header>
+  <div id="learnbar"><span>🎓 Learning mode <span style="opacity:.6">— explains every step</span></span><button class="sw" id="sw" aria-label="Learning mode"></button></div>
+  <div id="learn"></div>
   <div id="road"></div>
   <div id="table">
     <div class="hand" id="hP"><h3>PLAYER</h3><div class="total" id="tP"></div><div class="cards" id="cP"></div></div>
@@ -83,7 +93,7 @@ const SUITS=['♠','♥','♦','♣'], RANKS=['A','2','3','4','5','6','7','8','9
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
-let balance=store.get('bal',1000), history=store.get('hist',[]), chip=10, busy=false;
+let learnOn=store.get('learn',false), balance=store.get('bal',1000), history=store.get('hist',[]), chip=10, busy=false;
 let bets={P:0,T:0,B:0}, shoe=[];
 
 function newShoe(){
@@ -97,7 +107,23 @@ function newShoe(){
 const val=c=>c.r>=9?0:c.r+1;
 const total=h=>h.reduce((a,c)=>a+val(c),0)%10;
 const draw=()=>{if(shoe.length<20)newShoe();return shoe.pop()};
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const sleep=ms=>new Promise(r=>setTimeout(r,learnOn?ms*2:ms));
+const NAMES={P:'Player',B:'Banker',T:'Tie'};
+const EDGE={P:'1.24%',B:'1.06%',T:'14.36%'};
+function say(html,cls){if(!learnOn)return;const l=$('learn'),p=document.createElement('p');if(cls)p.className=cls;p.innerHTML=html;l.appendChild(p);l.scrollTop=l.scrollHeight}
+function learnReset(html){const l=$('learn');l.innerHTML='';if(learnOn&&html)say(html)}
+function intro(){
+  learnReset('<span class="hd">Before you bet</span>');
+  say('Goal: get a hand total closest to <b>9</b>. Aces = 1, 2–9 = face value, 10/J/Q/K = 0. Only the last digit counts (7+8 = 15 → 5).');
+  say('House edge by bet: <b>Banker 1.06%</b> (lowest), Player 1.24%, <b>Tie 14.36%</b> (highest). Over time, Banker costs you the least.','tip');
+  say('Tap a spot to place chips, then press DEAL.');
+}
+function setLearn(on){
+  learnOn=on;store.set('learn',on);
+  $('sw').classList.toggle('on',on);$('learn').classList.toggle('show',on);
+  if(on&&!busy)intro();else if(!on)$('learn').innerHTML='';
+}
+const hv=h=>h.map(c=>RANKS[c.r]+SUITS[c.s]).join(' ');
 
 function cardEl(c){
   const d=document.createElement('div');
@@ -146,12 +172,24 @@ async function play(){
   const P=[],B=[];
   const give=async(h,el,tel)=>{const c=draw();h.push(c);$(el).appendChild(cardEl(c));$(tel).textContent=total(h);await sleep(550)};
   await give(P,'cP','tP');await give(B,'cB','tB');await give(P,'cP','tP');await give(B,'cB','tB');
+  learnReset('<span class="hd">The deal</span>');
+  say('Opening cards → Player <b>'+hv(P)+'</b> = '+total(P)+', Banker <b>'+hv(B)+'</b> = '+total(B)+'.');
   const natural=total(P)>=8||total(B)>=8;
-  if(natural){$('msg').textContent='Natural!';await sleep(700)}
-  else{
+  if(natural){
+    $('msg').textContent='Natural!';
+    say('<b>Natural!</b> A first-two-card total of 8 or 9 ends the hand immediately: nobody draws.');
+    await sleep(700)
+  }else{
     let p3=null;
-    if(total(P)<=5){await give(P,'cP','tP');p3=val(P[2])}
-    if(bankerDraws(total(B),p3))await give(B,'cB','tB');
+    if(total(P)<=5){
+      say('Player has '+total(P)+' (0–5) so Player <b>must draw</b> a third card.');
+      await give(P,'cP','tP');p3=val(P[2]);
+      say('Player drew '+RANKS[P[2].r]+' (worth '+p3+'), total now '+total(P)+'.');
+    }else say('Player has '+total(P)+' (6–7) so Player <b>stands</b>.');
+    const bt=total(B),bd=bankerDraws(bt,p3);
+    if(p3===null)say('Player stood, so Banker follows the simple rule: draws on 0–5, stands on 6–7. Banker has '+bt+' → <b>'+(bd?'draws':'stands')+'</b>.');
+    else say('Banker has '+bt+' and Player\'s third card was worth '+p3+'. The Banker table says Banker <b>'+(bd?'draws':'stands')+'</b>.');
+    if(bd)await give(B,'cB','tB');
   }
   const tp=total(P),tb=total(B);
   const res=tp>tb?'P':tb>tp?'B':'T';
@@ -164,6 +202,16 @@ async function play(){
   if(res!=='T')$(res==='P'?'hP':'hB').classList.add('win');
   const net=Math.round((win-staked)*100)/100;
   $('msg').textContent=(res==='P'?'Player wins ':res==='B'?'Banker wins ':'Tie ')+tp+' – '+tb+' · '+(net>0?'+'+net:net<0?String(net):'push');
+  say('<span class="hd">Result</span>');
+  say('Player '+tp+' vs Banker '+tb+' → <b>'+(res==='T'?'Tie':NAMES[res]+' wins')+'</b>.');
+  ['P','B','T'].forEach(z=>{
+    if(!bets[z])return;
+    if(z===res)say('Your '+NAMES[z]+' bet of '+bets[z]+' won'+(z==='B'?' at 0.95:1 (5% commission)':z==='T'?' at 8:1':' at 1:1')+'.');
+    else if(res==='T'&&z!=='T')say('Tie: your '+NAMES[z]+' bet of '+bets[z]+' is a <b>push</b> (returned).');
+    else say('Your '+NAMES[z]+' bet of '+bets[z]+' lost.');
+  });
+  if(bets.T)say('Tip: Tie pays 8:1 but only happens about 9.5% of the time, so the house keeps 14.36% on average. It is the costliest bet.','tip');
+  if(res==='T'&&!bets.T)say('Ties happen about 9.5% of hands. Player and Banker bets just push.','tip');
   history.push(res);store.set('hist',history.slice(-200));store.set('bal',balance);
   bets={P:0,T:0,B:0};busy=false;
   if(balance<10){
@@ -173,6 +221,7 @@ async function play(){
   render();
 }
 
+$('sw').onclick=()=>setLearn(!learnOn);
 document.querySelectorAll('.zone').forEach(z=>z.onclick=()=>addBet(z.dataset.z));
 document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
   chip=+c.dataset.v;document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('sel',x===c));
@@ -185,7 +234,7 @@ $('info').onclick=()=>{
   $('x').onclick=()=>$('modal').style.display='none';
   $('rs').onclick=()=>{balance=1000;history=[];store.set('bal',1000);store.set('hist',[]);bets={P:0,T:0,B:0};$('modal').style.display='none';$('msg').textContent='Place your bets';render()};
 };
-newShoe();render();
+newShoe();render();$('sw').classList.toggle('on',learnOn);$('learn').classList.toggle('show',learnOn);if(learnOn)intro();
 })();
 </script>
 </body>
